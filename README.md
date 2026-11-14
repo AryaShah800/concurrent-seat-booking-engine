@@ -89,7 +89,7 @@ All integration tests run against a **real PostgreSQL 16 in Testcontainers**, no
 
 | `BookingServiceTest` | Mockito unit tests that force rare race interleavings deterministically. Example: a duplicate same-key confirm that reads the hold just after the winner committed must replay the booking, not return 409. CI's concurrency test caught this case once before it was fixed. |
 
-Latest local run (JDK 24 compiling for Java 21, Windows 11, Docker Desktop): **38 test executions (34 test methods), 0 failures.** JaCoCo coverage from that run: **91.9% of lines, 77.5% of branches.** CI runs the same `mvn verify` on JDK 21 and prints the coverage in the job summary.
+Latest local run (JDK 24 compiling for Java 21, Windows 11, Docker Desktop): **38 test executions (34 test methods), 0 failures.** JaCoCo coverage from that run: **91.9% of lines, 77.5% of branches.** CI runs the same `mvn verify` on JDK 21 and prints the coverage in the job summary. The CI run for commit `c1207cd` had 38 tests, 0 failures, **92.3% line and 78.9% branch coverage**.
 
 ## Load test (k6)
 
