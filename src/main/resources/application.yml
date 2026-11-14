@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: concurrent-seat-booking-engine
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/seatbooking}
+    username: ${DB_USERNAME:seatbooking}
+    password: ${DB_PASSWORD:seatbooking}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+booking:
+  hold-ttl: ${BOOKING_HOLD_TTL:PT5M}
+  sweep-interval: ${BOOKING_SWEEP_INTERVAL:PT5S}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
