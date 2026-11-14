@@ -144,6 +144,17 @@ public class BookingService {
         } catch (DataIntegrityViolationException | OptimisticLockingFailureException e) {
             // Another request committed first. If it used our key, return its booking.
             return replay(idempotencyKey, fingerprint).orElseThrow(ApiException::holdNotActive);
+        } catch (ApiException e) {
+            // A duplicate that passed the first replay check before the winner committed, and then
+            // read the hold after that commit, sees it as CONFIRMED. If the winner used our key,
+            // this is a retry and must get the original booking, not a 409.
+            if ("HOLD_NOT_ACTIVE".equals(e.getCode())) {
+                Optional<BookingResult> late = replay(idempotencyKey, fingerprint);
+                if (late.isPresent()) {
+                    return late.get();
+                }
+            }
+            throw e;
         }
     }
 

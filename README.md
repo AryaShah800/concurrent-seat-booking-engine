@@ -87,7 +87,9 @@ All integration tests run against a **real PostgreSQL 16 in Testcontainers**, no
 | `BookingApiTest` | REST contract end to end: status codes, `Idempotent-Replayed` header, validation errors, problem details, OpenAPI and health endpoints |
 | `SeatTest`, `BookingPropertiesTest` | Plain unit tests of the state rules and config |
 
-Latest local run (JDK 24 compiling for Java 21, Windows 11, Docker Desktop): **36 test executions (32 test methods), 0 failures.** JaCoCo coverage from that run: **91.7% of lines, 76.1% of branches.** CI runs the same `mvn verify` on JDK 21 and prints the coverage in the job summary.
+| `BookingServiceTest` | Mockito unit tests that force rare race interleavings deterministically. Example: a duplicate same-key confirm that reads the hold just after the winner committed must replay the booking, not return 409. CI's concurrency test caught this case once before it was fixed. |
+
+Latest local run (JDK 24 compiling for Java 21, Windows 11, Docker Desktop): **38 test executions (34 test methods), 0 failures.** JaCoCo coverage from that run: **91.9% of lines, 77.5% of branches.** CI runs the same `mvn verify` on JDK 21 and prints the coverage in the job summary.
 
 ## Load test (k6)
 
@@ -112,6 +114,7 @@ How these were measured:
 - Each run started from a fresh database (`docker compose down -v` then `up`).
 - A 20 s warm-up at 50 VUs ran first so the JVM was warm.
 - The measured run had 8 shows × 2,600 = 20,800 seats, so the venue did not sell out.
+- The code measured was commit `bd57d6b`. The only later change to `src/main` (the late-duplicate replay fix) affects a path that returns 409. That path never fired in these runs (0 unexpected statuses), so the numbers stand.
 - k6 0.54.0 ran in a container on the compose network. Raw k6 summaries are in [`load/measured/`](load/measured/).
 
 | | 100 VUs, 60 s | 200 VUs, 60 s |
