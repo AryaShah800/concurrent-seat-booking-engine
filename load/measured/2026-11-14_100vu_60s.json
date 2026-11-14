@@ -1,0 +1,313 @@
+{
+ "options": {
+  "summaryTrendStats": [
+   "avg",
+   "med",
+   "p(90)",
+   "p(95)",
+   "p(99)",
+   "max"
+  ],
+  "summaryTimeUnit": "",
+  "noColor": false
+ },
+ "state": {
+  "isStdErrTTY": false,
+  "testRunDurationMs": 68905.509229,
+  "isStdOutTTY": false
+ },
+ "metrics": {
+  "http_req_duration{expected_response:true}": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "p(95)": 302.988145,
+    "p(99)": 418.36985900000025,
+    "max": 2582.757484,
+    "avg": 85.08706799603087,
+    "med": 55.808474,
+    "p(90)": 195.340576
+   }
+  },
+  "confirm_latency": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "avg": 135.93966822722936,
+    "med": 92.73693449999999,
+    "p(90)": 321.96572570000006,
+    "p(95)": 380.97122079999997,
+    "p(99)": 474.2703668899989,
+    "max": 724.2926
+   }
+  },
+  "http_req_duration": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "p(95)": 302.988145,
+    "p(99)": 418.36985900000025,
+    "max": 2582.757484,
+    "avg": 85.08706799603087,
+    "med": 55.808474,
+    "p(90)": 195.340576
+   }
+  },
+  "http_reqs": {
+   "type": "counter",
+   "contains": "default",
+   "values": {
+    "count": 69521,
+    "rate": 1008.9323883951641
+   }
+  },
+  "hold_latency": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "avg": 54.61586135901752,
+    "med": 47.584237,
+    "p(90)": 97.2772316,
+    "p(95)": 118.39558799999999,
+    "p(99)": 171.75954387999994,
+    "max": 888.221668
+   }
+  },
+  "iterations": {
+   "type": "counter",
+   "contains": "default",
+   "values": {
+    "rate": 514.7483909032965,
+    "count": 35469
+   }
+  },
+  "replay_mismatch": {
+   "type": "counter",
+   "contains": "default",
+   "values": {
+    "count": 0,
+    "rate": 0
+   },
+   "thresholds": {
+    "count==0": {
+     "ok": true
+    }
+   }
+  },
+  "http_req_waiting": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "p(95)": 302.067703,
+    "p(99)": 416.71709920000035,
+    "max": 2582.15872,
+    "avg": 84.14974923047735,
+    "med": 54.94002,
+    "p(90)": 194.123382
+   }
+  },
+  "data_received": {
+   "type": "counter",
+   "contains": "data",
+   "values": {
+    "count": 23787576,
+    "rate": 345220.23371084256
+   }
+  },
+  "http_req_connecting": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "p(95)": 0,
+    "p(99)": 0.21306400000000175,
+    "max": 63.782972,
+    "avg": 0.03127192665525523,
+    "med": 0,
+    "p(90)": 0
+   }
+  },
+  "http_req_tls_handshaking": {
+   "values": {
+    "max": 0,
+    "avg": 0,
+    "med": 0,
+    "p(90)": 0,
+    "p(95)": 0,
+    "p(99)": 0
+   },
+   "type": "trend",
+   "contains": "time"
+  },
+  "data_sent": {
+   "values": {
+    "rate": 219147.6148854106,
+    "count": 15100478
+   },
+   "type": "counter",
+   "contains": "data"
+  },
+  "unexpected_status": {
+   "contains": "default",
+   "values": {
+    "count": 0,
+    "rate": 0
+   },
+   "thresholds": {
+    "count==0": {
+     "ok": true
+    }
+   },
+   "type": "counter"
+  },
+  "vus": {
+   "contains": "default",
+   "values": {
+    "value": 100,
+    "min": 0,
+    "max": 100
+   },
+   "type": "gauge"
+  },
+  "bookings_created": {
+   "type": "counter",
+   "contains": "default",
+   "values": {
+    "count": 17018,
+    "rate": 246.97589772455666
+   }
+  },
+  "http_req_sending": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "max": 560.785973,
+    "avg": 0.11331383344600969,
+    "med": 0.021867,
+    "p(90)": 0.061667,
+    "p(95)": 0.095237,
+    "p(99)": 0.7464644000000022
+   }
+  },
+  "http_req_blocked": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "p(95)": 0.019343,
+    "p(99)": 0.43232920000000297,
+    "max": 560.652803,
+    "avg": 0.06568705776671828,
+    "med": 0.005516,
+    "p(90)": 0.013071
+   }
+  },
+  "checks": {
+   "type": "rate",
+   "contains": "default",
+   "values": {
+    "rate": 1,
+    "passes": 34036,
+    "fails": 0
+   }
+  },
+  "vus_max": {
+   "type": "gauge",
+   "contains": "default",
+   "values": {
+    "value": 100,
+    "min": 100,
+    "max": 100
+   }
+  },
+  "replay_latency": {
+   "contains": "time",
+   "values": {
+    "avg": 97.30826414625687,
+    "med": 50.095293999999996,
+    "p(90)": 284.97367080000004,
+    "p(95)": 341.55879609999994,
+    "p(99)": 434.47914510999976,
+    "max": 608.401935
+   },
+   "type": "trend"
+  },
+  "holds_won": {
+   "type": "counter",
+   "contains": "default",
+   "values": {
+    "count": 17018,
+    "rate": 246.97589772455666
+   }
+  },
+  "http_req_receiving": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "avg": 0.8240049321068393,
+    "med": 0.076103,
+    "p(90)": 0.716976,
+    "p(95)": 2.942769,
+    "p(99)": 17.670984200000124,
+    "max": 575.442818
+   }
+  },
+  "http_req_failed": {
+   "contains": "default",
+   "values": {
+    "rate": 0,
+    "passes": 0,
+    "fails": 69521
+   },
+   "type": "rate"
+  },
+  "holds_conflict": {
+   "type": "counter",
+   "contains": "default",
+   "values": {
+    "count": 18451,
+    "rate": 267.77249317873986
+   }
+  },
+  "replays_ok": {
+   "values": {
+    "count": 17018,
+    "rate": 246.97589772455666
+   },
+   "type": "counter",
+   "contains": "default"
+  },
+  "iteration_duration": {
+   "type": "trend",
+   "contains": "time",
+   "values": {
+    "med": 93.745221,
+    "p(90)": 418.038868,
+    "p(95)": 525.1737917999998,
+    "p(99)": 793.2107670399998,
+    "max": 1513.088238,
+    "avg": 168.08810504572978
+   }
+  }
+ },
+ "root_group": {
+  "name": "",
+  "path": "",
+  "id": "d41d8cd98f00b204e9800998ecf8427e",
+  "groups": [],
+  "checks": [
+   {
+    "name": "booking created (201)",
+    "path": "::booking created (201)",
+    "id": "ea19ebc08b736cb15075dc35086fd59f",
+    "passes": 17018,
+    "fails": 0
+   },
+   {
+    "name": "replay returns same booking (200)",
+    "path": "::replay returns same booking (200)",
+    "id": "49b91cfecc4948ea8265d55025ec5889",
+    "passes": 17018,
+    "fails": 0
+   }
+  ]
+ }
+}

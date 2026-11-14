@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: mvn verify (JUnit 5 + Testcontainers PostgreSQL + JaCoCo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # GitHub-hosted Ubuntu runners include Docker, which Testcontainers uses to start PostgreSQL 16.
+      - name: Build, test and measure coverage
+        run: mvn -B -ntp verify
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f target/site/jacoco/jacoco.csv ]; then
+            awk -F, 'NR>1 {lm+=$8; lc+=$9; bm+=$6; bc+=$7} END {printf "Line coverage: %.1f%%\nBranch coverage: %.1f%%\n", 100*lc/(lc+lm), 100*bc/(bc+bm)}' target/site/jacoco/jacoco.csv | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t concurrent-seat-booking-engine:ci .
