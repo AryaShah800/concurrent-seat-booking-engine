@@ -1,0 +1,52 @@
+# Local stack: PostgreSQL 16 + the booking API.
+#   docker compose up -d --build
+# Load test (k6 runs in a container on the same network):
+#   docker compose --profile load run --rm k6
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: seatbooking
+      POSTGRES_USER: seatbooking
+      # Local development only. Override with a real secret anywhere else.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-seatbooking}
+    command: ["postgres", "-c", "max_connections=200"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seatbooking -d seatbooking"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/seatbooking
+      DB_USERNAME: seatbooking
+      DB_PASSWORD: ${DB_PASSWORD:-seatbooking}
+      DB_POOL_SIZE: "30"
+      BOOKING_HOLD_TTL: PT5M
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8080'"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  k6:
+    image: grafana/k6:0.54.0
+    profiles: ["load"]
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      BASE_URL: http://app:8080
+      VUS: ${VUS:-200}
+      DURATION: ${DURATION:-60s}
+      SHOWS: ${SHOWS:-4}
+    volumes:
+      - ./load:/load
+    command: ["run", "/load/booking-race.js"]
