@@ -1,0 +1,10 @@
+# Render Blueprint: the self-contained public demo (API + PostgreSQL 16 in one container, no Kafka).
+# The full stack (Kafka, notification-service, Prometheus, Grafana) is docker-compose.yml.
+services:
+  - type: web
+    name: seat-booking-demo
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/demo/Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health

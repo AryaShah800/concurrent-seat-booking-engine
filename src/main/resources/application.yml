@@ -32,6 +32,10 @@ spring:
 booking:
   hold-ttl: ${BOOKING_HOLD_TTL:PT5M}
   sweep-interval: ${BOOKING_SWEEP_INTERVAL:PT5S}
+  # Public-demo guard (deploy/demo): keep only the newest shows. Off by default.
+  demo:
+    enabled: ${BOOKING_DEMO_ENABLED:false}
+    max-shows: ${BOOKING_DEMO_MAX_SHOWS:50}
 
 management:
   endpoints:
