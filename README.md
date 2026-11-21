@@ -169,3 +169,22 @@ its side effect (a `notification` row for `BookingConfirmed`), so redelivered ev
 Unreadable records go straight to `booking.events.DLT`; transient failures are retried 3 times
 first. The event shape is defined in `contracts/booking-event.schema.json`, and both services have
 a test that validates against it. Run it with `docker compose up -d --build`.
+
+## Observability
+
+`/actuator/prometheus` exposes `seatbooking_operation_seconds{operation,outcome}` (hold, release,
+confirm; success / rejected / error, with histogram buckets), `seatbooking_confirm_replays_total`,
+`seatbooking_holds_expired_total` and `seatbooking_outbox_unpublished` (events waiting for Kafka),
+plus the standard JVM and HikariCP metrics.
+
+```
+docker compose --profile obs up -d --build      # Prometheus :9090, Grafana :3000 (anonymous viewer)
+docker compose --profile load run --rm k6       # watch the dashboard fill
+```
+
+![Grafana dashboard during a 50-VU k6 run](docs/grafana-dashboard.png)
+
+The screenshot is from a 50 VU / 60 s run on a shared laptop (raw k6 summary in
+`load/measured/2026-11-21_50vu_60s_with_observability.txt`; not comparable to the 200 VU table above).
+During that run the outbox backlog peaked at a few hundred events and drained to zero within seconds
+of the load ending, which is the at-least-once relay keeping up.

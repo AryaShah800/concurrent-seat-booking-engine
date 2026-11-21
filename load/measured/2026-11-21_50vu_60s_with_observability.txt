@@ -1,0 +1,14 @@
+==== booking-race summary ====
+virtual users            : 50 for 60s
+http requests            : 22108 (222.2/s)
+holds won / conflicts    : 6242 / 3374
+bookings created         : 6242
+idempotent replays ok    : 6242  mismatches: 0
+unexpected statuses      : 0
+hold    p50/p95/p99      : 58.0 ms / 197.9 ms / 346.4 ms
+confirm p50/p95/p99      : 168.2 ms / 525.7 ms / 720.3 ms
+replay  p50/p95/p99      : 102.9 ms / 453.6 ms / 612.0 ms
+all requests p95         : 425.4 ms
+
+running (1m39.5s), 00/50 VUs, 9616 complete and 0 interrupted iterations
+flash_sale ✓ [ 100% ] 50 VUs  1m0s

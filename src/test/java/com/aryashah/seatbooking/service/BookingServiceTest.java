@@ -43,7 +43,8 @@ class BookingServiceTest {
         PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
         when(tm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new BookingService(seats, holds, bookings, tm, Clock.fixed(NOW, ZoneOffset.UTC),
-                new BookingProperties(Duration.ofMinutes(5)), outbox);
+                new BookingProperties(Duration.ofMinutes(5)), outbox,
+                new BookingMetrics(new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
     }
 
     @Test
