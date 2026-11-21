@@ -4,6 +4,8 @@
 
 A Spring Boot 3 / PostgreSQL backend for ticket-style seat booking that guarantees **one seat is booked at most once**, even when many clients race for it.
 
+**Live demo: https://seat-booking-demo.onrender.com** (seat map UI; API docs at `/swagger-ui.html`). Pick a free seat and press **Run race** to fire 20 concurrent hold requests for it: exactly one wins and 19 get `409`. It runs on Render's free tier, so the first visit after about 15 idle minutes takes up to a minute to wake up. The demo is one container with the API and its own PostgreSQL 16 (`deploy/demo/`): data resets on every restart, only the newest 50 shows are kept, and Kafka and the notification service are not included (`BOOKING_OUTBOX_ENABLED=false`). Checked locally under `docker run -m 512m`: about 340 MiB in use, 20 concurrent holds on one seat gave one `201` and nineteen `409`.
+
 - **Seat holds with expiry.** A customer holds a seat for a configurable TTL (default 5 minutes) and then confirms it. Lapsed holds stop blocking the seat immediately, and a scheduled sweeper releases them in the database.
 - **Optimistic locking.** `@Version` on the seat row means that when N requests race for one seat, exactly one `UPDATE ... WHERE version = ?` succeeds. The rest get `409 SEAT_UNAVAILABLE`.
 - **Idempotent bookings.** `POST /api/bookings` requires an `Idempotency-Key` header.
