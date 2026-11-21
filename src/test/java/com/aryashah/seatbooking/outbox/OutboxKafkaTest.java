@@ -71,6 +71,15 @@ class OutboxKafkaTest extends IntegrationTest {
         assertThat(seen).hasSize(1);
         JsonNode e = seen.get(0);
         assertThat(e.get("eventId").asText()).isNotBlank();
+        // Contract shared with notification-service: the real payload must satisfy contracts/booking-event.schema.json.
+        try {
+            var schema = com.networknt.schema.JsonSchemaFactory
+                    .getInstance(com.networknt.schema.SpecVersion.VersionFlag.V202012)
+                    .getSchema(java.nio.file.Files.readString(java.nio.file.Path.of("contracts/booking-event.schema.json")));
+            assertThat(schema.validate(e)).isEmpty();
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException(ex);
+        }
         assertThat(e.get("seatId").asLong()).isEqualTo(seat.getId());
         assertThat(e.get("customerId").asText()).isEqualTo("alice");
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(unpublishedFor(seat.getId())).isZero());

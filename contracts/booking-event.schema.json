@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/booking-event.schema.json",
+  "title": "Booking event published to the booking.events topic",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "seatId", "holdId", "customerId"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid", "description": "Unique per event; consumers de-duplicate on it."},
+    "eventType": {"enum": ["HoldPlaced", "HoldReleased", "HoldExpired", "BookingConfirmed"]},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "seatId": {"type": "integer"},
+    "holdId": {"type": ["string", "null"], "format": "uuid"},
+    "bookingId": {"type": ["string", "null"], "format": "uuid", "description": "Set for BookingConfirmed."},
+    "customerId": {"type": "string"}
+  },
+  "additionalProperties": true
+}
