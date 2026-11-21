@@ -8,5 +8,6 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record OutboxProperties(
         @DefaultValue("booking.events") String topic,
         @DefaultValue("100") int batchSize,
-        @DefaultValue("PT5S") Duration sendTimeout) {
+        @DefaultValue("PT5S") Duration sendTimeout,
+        @DefaultValue("P7D") Duration retention) {
 }

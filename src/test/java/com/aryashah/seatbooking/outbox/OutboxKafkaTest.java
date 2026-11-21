@@ -58,6 +58,8 @@ class OutboxKafkaTest extends IntegrationTest {
     JdbcTemplate jdbc;
     @Autowired
     ObjectMapper mapper;
+    @Autowired
+    OutboxPurger purger;
 
     @Test
     void confirmedBookingIsPublishedExactlyOnceWithAnEventId() {
@@ -117,6 +119,28 @@ class OutboxKafkaTest extends IntegrationTest {
         assertThat(n).isEqualTo(1);
     }
 
+    @Test
+    void purgeDeletesOnlyOldPublishedRows() {
+        UUID oldPublished = UUID.randomUUID();
+        UUID recentPublished = UUID.randomUUID();
+        UUID oldUnpublished = UUID.randomUUID();
+        String sql = "INSERT INTO outbox_event (id, aggregate_id, event_type, payload, created_at, published_at) "
+                + "VALUES (?, '9', 'X', '{}'::jsonb, now(), ?)";
+        jdbc.update(sql, oldPublished, java.sql.Timestamp.from(clock.instant().minus(Duration.ofDays(30))));
+        jdbc.update(sql, recentPublished, java.sql.Timestamp.from(clock.instant().minus(Duration.ofDays(1))));
+        jdbc.update(sql, oldUnpublished, null);
+
+        purger.purge();
+
+        assertThat(exists(oldPublished)).isFalse();
+        assertThat(exists(recentPublished)).isTrue();
+        assertThat(exists(oldUnpublished)).isTrue();
+    }
+
+    private boolean exists(UUID id) {
+        return jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE id = ?", Integer.class, id) > 0;
+    }
+
     private int unpublishedFor(Long seatId) {
         return jdbc.queryForObject(
                 "SELECT count(*) FROM outbox_event WHERE published_at IS NULL AND aggregate_id = ?",
@@ -141,7 +165,7 @@ class OutboxKafkaTest extends IntegrationTest {
                 for (ConsumerRecord<String, String> r : consumer.poll(Duration.ofMillis(found ? 2000 : 500))) {
                     try {
                         JsonNode n = mapper.readTree(r.value());
-                        if (type.equals(n.get("eventType").asText())
+                        if (type.equals(n.path("eventType").asText())
                                 && bookingId.equals(n.path("bookingId").asText())) {
                             matches.add(n);
                             found = true;
@@ -154,7 +178,7 @@ class OutboxKafkaTest extends IntegrationTest {
                     consumer.poll(Duration.ofSeconds(2)).forEach(r -> {
                         try {
                             JsonNode n = mapper.readTree(r.value());
-                            if (type.equals(n.get("eventType").asText())
+                            if (type.equals(n.path("eventType").asText())
                                     && bookingId.equals(n.path("bookingId").asText())) {
                                 matches.add(n);
                             }

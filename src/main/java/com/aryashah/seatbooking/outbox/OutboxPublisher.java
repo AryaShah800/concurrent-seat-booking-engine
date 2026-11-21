@@ -1,7 +1,9 @@
 package com.aryashah.seatbooking.outbox;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -65,16 +67,28 @@ public class OutboxPublisher {
                     (rs, i) -> new Row(rs.getObject("id", UUID.class), rs.getString("aggregate_id"),
                             rs.getString("payload")),
                     props.batchSize());
-            for (Row r : rows) {
-                try {
-                    kafka.send(props.topic(), r.aggregateId(), r.payload())
-                            .get(props.sendTimeout().toMillis(), TimeUnit.MILLISECONDS);
-                } catch (Exception e) {
-                    throw new IllegalStateException("Kafka send failed for outbox event " + r.id(), e);
-                }
-                jdbc.update("UPDATE outbox_event SET published_at = ? WHERE id = ?",
-                        java.sql.Timestamp.from(clock.instant()), r.id());
+            if (rows.isEmpty()) {
+                return 0;
             }
+            // Send the whole batch without blocking per row, then wait for every ack.
+            List<CompletableFuture<?>> acks = new ArrayList<>(rows.size());
+            for (Row r : rows) {
+                acks.add(kafka.send(props.topic(), r.aggregateId(), r.payload()));
+            }
+            try {
+                CompletableFuture.allOf(acks.toArray(new CompletableFuture<?>[0]))
+                        .get(props.sendTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                // Any failure rolls the transaction back: nothing is marked published and the
+                // whole batch is retried (some rows may then be delivered twice: at-least-once).
+                throw new IllegalStateException("Kafka send failed for outbox batch of " + rows.size(), e);
+            }
+            UUID[] ids = rows.stream().map(Row::id).toArray(UUID[]::new);
+            jdbc.update("UPDATE outbox_event SET published_at = ? WHERE id = ANY (?)",
+                    ps -> {
+                        ps.setTimestamp(1, java.sql.Timestamp.from(clock.instant()));
+                        ps.setArray(2, ps.getConnection().createArrayOf("uuid", ids));
+                    });
             return rows.size();
         });
         return n == null ? 0 : n;
