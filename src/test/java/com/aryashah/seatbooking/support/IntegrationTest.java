@@ -23,11 +23,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"booking.sweeper.enabled=false", "booking.hold-ttl=PT2M"})
+        properties = {"booking.sweeper.enabled=false", "booking.outbox.enabled=false", "booking.hold-ttl=PT2M"})
 @Import(IntegrationTest.TestClockConfig.class)
 public abstract class IntegrationTest {
 
-    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("seatbooking")
             .withUsername("seatbooking")
             .withPassword("seatbooking")

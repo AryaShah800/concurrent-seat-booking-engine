@@ -8,6 +8,7 @@ import com.aryashah.seatbooking.domain.Seat;
 import com.aryashah.seatbooking.domain.SeatStatus;
 import com.aryashah.seatbooking.repository.BookingRepository;
 import com.aryashah.seatbooking.repository.HoldRepository;
+import com.aryashah.seatbooking.outbox.OutboxWriter;
 import com.aryashah.seatbooking.repository.SeatRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -48,16 +49,18 @@ public class BookingService {
     private final TransactionTemplate tx;
     private final Clock clock;
     private final BookingProperties properties;
+    private final OutboxWriter outbox;
 
     public BookingService(SeatRepository seats, HoldRepository holds, BookingRepository bookings,
                           PlatformTransactionManager transactionManager, Clock clock,
-                          BookingProperties properties) {
+                          BookingProperties properties, OutboxWriter outbox) {
         this.seats = seats;
         this.holds = holds;
         this.bookings = bookings;
         this.tx = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.properties = properties;
+        this.outbox = outbox;
     }
 
     /** Places a time-limited hold on a seat, or throws 409 if someone else got it first. */
@@ -77,6 +80,7 @@ public class BookingService {
                 seat.hold(hold.getId(), hold.getExpiresAt());
                 holds.save(hold);
                 seats.saveAndFlush(seat);
+                outbox.write(OutboxWriter.HOLD_PLACED, seatId, hold.getId(), null, customerId);
                 return hold;
             });
         } catch (OptimisticLockingFailureException e) {
@@ -101,6 +105,7 @@ public class BookingService {
                     seat.release();
                     seats.saveAndFlush(seat);
                 }
+                outbox.write(OutboxWriter.HOLD_RELEASED, hold.getSeatId(), holdId, null, customerId);
             });
         } catch (OptimisticLockingFailureException e) {
             throw ApiException.holdNotActive();
@@ -138,6 +143,7 @@ public class BookingService {
                         idempotencyKey, fingerprint, now);
                 bookings.save(created);
                 seats.saveAndFlush(seat);
+                outbox.write(OutboxWriter.BOOKING_CONFIRMED, seat.getId(), holdId, created.getId(), customerId);
                 return created;
             });
             return new BookingResult(booking, false);
@@ -166,6 +172,10 @@ public class BookingService {
     public int expireHolds() {
         Integer released = tx.execute(status -> {
             Instant now = clock.instant();
+            for (Hold lapsed : holds.findByStatusAndExpiresAtLessThanEqual(HoldStatus.ACTIVE, now)) {
+                outbox.write(OutboxWriter.HOLD_EXPIRED, lapsed.getSeatId(), lapsed.getId(), null,
+                        lapsed.getCustomerId());
+            }
             holds.expireActiveHolds(now, HoldStatus.ACTIVE, HoldStatus.EXPIRED);
             return seats.releaseExpiredHolds(now, SeatStatus.HELD, SeatStatus.AVAILABLE);
         });

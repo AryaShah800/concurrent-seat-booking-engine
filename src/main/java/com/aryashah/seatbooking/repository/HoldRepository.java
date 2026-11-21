@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface HoldRepository extends JpaRepository<Hold, UUID> {
 
+    java.util.List<Hold> findByStatusAndExpiresAtLessThanEqual(HoldStatus status, Instant now);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Hold h set h.status = :expired where h.status = :active and h.expiresAt <= :now")
     int expireActiveHolds(@Param("now") Instant now,
