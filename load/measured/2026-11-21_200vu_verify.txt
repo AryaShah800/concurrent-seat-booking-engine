@@ -1,0 +1,8 @@
+ bookings | booked_seats | seats_booked_twice | booked_without_booking | booking_customer_mismatch 
+----------+--------------+--------------------+------------------------+---------------------------
+     6947 |         6947 |                  0 |                      0 |                         0
+(1 row)
+
+outbox (unpublished | total):
+           0 | 13894
+
