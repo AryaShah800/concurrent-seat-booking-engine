@@ -35,6 +35,7 @@ class BookingServiceTest {
     private final SeatRepository seats = mock(SeatRepository.class);
     private final HoldRepository holds = mock(HoldRepository.class);
     private final BookingRepository bookings = mock(BookingRepository.class);
+    private final com.aryashah.seatbooking.outbox.OutboxWriter outbox = mock(com.aryashah.seatbooking.outbox.OutboxWriter.class);
     private BookingService service;
 
     @BeforeEach
@@ -42,7 +43,7 @@ class BookingServiceTest {
         PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
         when(tm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new BookingService(seats, holds, bookings, tm, Clock.fixed(NOW, ZoneOffset.UTC),
-                new BookingProperties(Duration.ofMinutes(5)));
+                new BookingProperties(Duration.ofMinutes(5)), outbox);
     }
 
     @Test
