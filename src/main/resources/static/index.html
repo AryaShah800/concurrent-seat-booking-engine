@@ -15,7 +15,8 @@
     --text-3: #6f6e69;
     --accent: #e8b04a;
     --accent-ink: #1a1305;
-    --booked: #16171b;
+    --booked: #24262c;
+    --booked-mark: #8e8d87;
     --danger: #e5766a;
     --ok: #86b894;
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
@@ -30,6 +31,8 @@
   .legend { display: flex; gap: 20px; color: var(--text-2); font-size: 13px; }
   .legend span { display: inline-flex; align-items: center; gap: 8px; }
   .dot { width: 12px; height: 12px; border-radius: 3px 3px 5px 5px; display: inline-block; }
+  .dot-booked { position: relative; background: var(--booked); box-shadow: inset 0 0 0 1px rgba(236,233,226,0.10); }
+  .dot-booked::after { content: "\d7"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--booked-mark); font: 500 13px/1 var(--sans); }
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
   @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
   .hall { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 32px 24px 28px; overflow-x: auto; }
@@ -46,7 +49,9 @@
   .seat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .seat.held { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); cursor: not-allowed; }
   .seat.mine { background: var(--accent); color: var(--accent-ink); box-shadow: none; cursor: default; }
-  .seat.booked { background: var(--booked); box-shadow: inset 0 0 0 1px rgba(236,233,226,0.04); color: transparent; cursor: not-allowed; }
+  .seat.booked { position: relative; background: var(--booked); box-shadow: inset 0 0 0 1px rgba(236,233,226,0.10); color: transparent; cursor: not-allowed; }
+  .seat.booked::after { content: "\d7"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                        color: var(--booked-mark); font: 500 20px/1 var(--sans); }
   .seat.picked { outline: 2px solid var(--accent); outline-offset: 2px; }
   aside { display: grid; gap: 16px; }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
@@ -85,7 +90,7 @@
       <span><i class="dot" style="background:var(--raised);box-shadow:inset 0 0 0 1px var(--line)"></i>Free</span>
       <span><i class="dot" style="box-shadow:inset 0 0 0 1.5px var(--text-3)"></i>Held</span>
       <span><i class="dot" style="background:var(--accent)"></i>Yours</span>
-      <span><i class="dot" style="background:var(--booked)"></i>Booked</span>
+      <span><i class="dot dot-booked"></i>Booked</span>
     </div>
   </header>
 
