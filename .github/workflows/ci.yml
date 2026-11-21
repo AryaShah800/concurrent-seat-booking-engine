@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'improve/**' ]
   pull_request:
     branches: [ main ]
 
@@ -41,6 +41,21 @@ jobs:
           name: jacoco-report
           path: target/site/jacoco/
 
+  notification-service:
+    name: notification-service verify (Kafka + PostgreSQL Testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: notification-service/pom.xml
+      - name: Build and test
+        working-directory: notification-service
+        run: mvn -B -ntp verify
+
   docker:
     name: Docker image builds
     runs-on: ubuntu-latest
@@ -48,4 +63,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t concurrent-seat-booking-engine:ci .
+        run: |
+          docker build -t concurrent-seat-booking-engine:ci .
+          docker build -t notification-service:ci notification-service

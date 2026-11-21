@@ -11,6 +11,8 @@ services:
       # Local development only. Override with a real secret anywhere else.
       POSTGRES_PASSWORD: ${DB_PASSWORD:-seatbooking}
     command: ["postgres", "-c", "max_connections=200"]
+    volumes:
+      - ./db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U seatbooking -d seatbooking"]
       interval: 3s
@@ -62,6 +64,22 @@ services:
       interval: 3s
       timeout: 3s
       retries: 40
+
+  # Second service: consumes booking.events, de-duplicates on eventId, parks bad records on booking.events.DLT.
+  notification-service:
+    build: ./notification-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/notifications
+      DB_USERNAME: seatbooking
+      DB_PASSWORD: ${DB_PASSWORD:-seatbooking}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "${NOTIFY_PORT:-8081}:8081"
 
   k6:
     image: grafana/k6:0.54.0
