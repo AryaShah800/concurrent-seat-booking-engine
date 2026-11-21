@@ -1,0 +1,37 @@
+{
+  "title": "Seat booking engine",
+  "uid": "seat-booking",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-5m", "to": "now"},
+  "panels": [
+    {"id": 1, "type": "timeseries", "title": "Requests per second by operation and outcome",
+     "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+     "targets": [{"datasource": {"uid": "prom"}, "expr": "sum by (operation, outcome) (rate(seatbooking_operation_seconds_count[15s]))", "legendFormat": "{{operation}} {{outcome}}"}]},
+    {"id": 2, "type": "timeseries", "title": "p95 latency (seconds)",
+     "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+     "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+     "targets": [{"datasource": {"uid": "prom"}, "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(seatbooking_operation_seconds_bucket[30s])))", "legendFormat": "{{operation}} p95"}]},
+    {"id": 3, "type": "timeseries", "title": "Lost races (rejected holds) vs successful holds per second",
+     "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+     "targets": [
+       {"datasource": {"uid": "prom"}, "expr": "sum(rate(seatbooking_operation_seconds_count{operation=\"hold\",outcome=\"rejected\"}[15s]))", "legendFormat": "rejected (409)"},
+       {"datasource": {"uid": "prom"}, "expr": "sum(rate(seatbooking_operation_seconds_count{operation=\"hold\",outcome=\"success\"}[15s]))", "legendFormat": "held"}]},
+    {"id": 4, "type": "stat", "title": "Outbox backlog (events not yet in Kafka)",
+     "gridPos": {"x": 12, "y": 8, "w": 6, "h": 8},
+     "targets": [{"datasource": {"uid": "prom"}, "expr": "seatbooking_outbox_unpublished"}]},
+    {"id": 5, "type": "stat", "title": "Idempotent confirm replays (total)",
+     "gridPos": {"x": 18, "y": 8, "w": 6, "h": 8},
+     "targets": [{"datasource": {"uid": "prom"}, "expr": "seatbooking_confirm_replays_total"}]},
+    {"id": 6, "type": "timeseries", "title": "DB connections (HikariCP)",
+     "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
+     "targets": [
+       {"datasource": {"uid": "prom"}, "expr": "hikaricp_connections_active", "legendFormat": "active"},
+       {"datasource": {"uid": "prom"}, "expr": "hikaricp_connections_pending", "legendFormat": "waiting"}]},
+    {"id": 7, "type": "timeseries", "title": "JVM heap used (bytes)",
+     "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+     "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+     "targets": [{"datasource": {"uid": "prom"}, "expr": "sum(jvm_memory_used_bytes{area=\"heap\"})", "legendFormat": "heap"}]}
+  ]
+}

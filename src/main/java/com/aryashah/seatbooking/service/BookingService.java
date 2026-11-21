@@ -50,10 +50,12 @@ public class BookingService {
     private final Clock clock;
     private final BookingProperties properties;
     private final OutboxWriter outbox;
+    private final BookingMetrics metrics;
 
     public BookingService(SeatRepository seats, HoldRepository holds, BookingRepository bookings,
                           PlatformTransactionManager transactionManager, Clock clock,
-                          BookingProperties properties, OutboxWriter outbox) {
+                          BookingProperties properties, OutboxWriter outbox,
+                          BookingMetrics metrics) {
         this.seats = seats;
         this.holds = holds;
         this.bookings = bookings;
@@ -61,10 +63,15 @@ public class BookingService {
         this.clock = clock;
         this.properties = properties;
         this.outbox = outbox;
+        this.metrics = metrics;
     }
 
     /** Places a time-limited hold on a seat, or throws 409 if someone else got it first. */
     public Hold placeHold(Long seatId, String customerId) {
+        return metrics.time("hold", () -> doPlaceHold(seatId, customerId));
+    }
+
+    private Hold doPlaceHold(Long seatId, String customerId) {
         try {
             return tx.execute(status -> {
                 Instant now = clock.instant();
@@ -90,6 +97,13 @@ public class BookingService {
 
     /** Releases a hold early so the seat returns to the pool. */
     public void releaseHold(UUID holdId, String customerId) {
+        metrics.time("release", () -> {
+            doReleaseHold(holdId, customerId);
+            return null;
+        });
+    }
+
+    private void doReleaseHold(UUID holdId, String customerId) {
         try {
             tx.executeWithoutResult(status -> {
                 Hold hold = holds.findById(holdId).orElseThrow(() -> ApiException.notFound("Hold " + holdId));
@@ -118,6 +132,14 @@ public class BookingService {
      * @return the booking and whether it was replayed from an earlier request
      */
     public BookingResult confirm(String idempotencyKey, UUID holdId, String customerId) {
+        BookingResult result = metrics.time("confirm", () -> doConfirm(idempotencyKey, holdId, customerId));
+        if (result.replayed()) {
+            metrics.replayed();
+        }
+        return result;
+    }
+
+    private BookingResult doConfirm(String idempotencyKey, UUID holdId, String customerId) {
         String fingerprint = fingerprint(holdId, customerId);
         Optional<BookingResult> replay = replay(idempotencyKey, fingerprint);
         if (replay.isPresent()) {
@@ -179,7 +201,9 @@ public class BookingService {
             holds.expireActiveHolds(now, HoldStatus.ACTIVE, HoldStatus.EXPIRED);
             return seats.releaseExpiredHolds(now, SeatStatus.HELD, SeatStatus.AVAILABLE);
         });
-        return released == null ? 0 : released;
+        int n = released == null ? 0 : released;
+        metrics.expired(n);
+        return n;
     }
 
     private Optional<BookingResult> replay(String idempotencyKey, String fingerprint) {

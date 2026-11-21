@@ -81,6 +81,30 @@ services:
     ports:
       - "${NOTIFY_PORT:-8081}:8081"
 
+  # Metrics: docker compose --profile obs up -d  ->  Grafana http://localhost:3000 (anonymous viewer)
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["obs"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    profiles: ["obs"]
+    depends_on:
+      - prometheus
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/seat-booking.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+
   k6:
     image: grafana/k6:0.54.0
     profiles: ["load"]
