@@ -188,3 +188,12 @@ The screenshot is from a 50 VU / 60 s run on a shared laptop (raw k6 summary in
 `load/measured/2026-11-21_50vu_60s_with_observability.txt`; not comparable to the 200 VU table above).
 During that run the outbox backlog peaked at a few hundred events and drained to zero within seconds
 of the load ending, which is the at-least-once relay keeping up.
+
+## Seat map UI
+
+Open `http://localhost:8080/` after `docker compose up`. A static page (no build step) served by the
+engine: pick a free seat to hold it, watch the hold countdown, confirm or release. "Run race" fires 20
+simultaneous hold requests at the selected seat and shows that exactly one wins and the rest get 409.
+`?show=2` picks another show, `?as=name` sets the customer id.
+
+![Seat map with a hold in progress](docs/seat-map.png)
