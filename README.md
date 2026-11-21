@@ -160,3 +160,12 @@ marks the row published. Delivery is **at-least-once**: each payload carries a u
 that consumers use to de-duplicate. If Kafka is unreachable the booking API keeps working and the
 events wait in the table (covered by `OutboxKafkaTest`, which pauses a real broker container).
 `docker compose up` starts Kafka in KRaft mode (no Zookeeper).
+
+## notification-service (second service)
+
+`notification-service/` is a separate Spring Boot app with its own database (`notifications`). It
+consumes `booking.events`, records each `eventId` in `processed_event` in the same transaction as
+its side effect (a `notification` row for `BookingConfirmed`), so redelivered events are ignored.
+Unreadable records go straight to `booking.events.DLT`; transient failures are retried 3 times
+first. The event shape is defined in `contracts/booking-event.schema.json`, and both services have
+a test that validates against it. Run it with `docker compose up -d --build`.
