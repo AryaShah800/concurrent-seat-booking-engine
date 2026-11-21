@@ -55,6 +55,7 @@ services:
       DB_USERNAME: seatbooking
       DB_PASSWORD: ${DB_PASSWORD:-seatbooking}
       DB_POOL_SIZE: "30"
+      BOOKING_OUTBOX_ENABLED: ${BOOKING_OUTBOX_ENABLED:-true}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       BOOKING_HOLD_TTL: PT5M
     ports:

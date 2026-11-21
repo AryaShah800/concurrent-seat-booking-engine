@@ -1,0 +1,5 @@
+ bookings | booked_seats | seats_booked_twice | booked_without_booking | booking_customer_mismatch 
+----------+--------------+--------------------+------------------------+---------------------------
+     5017 |         5017 |                  0 |                      0 |                         0
+(1 row)
+

@@ -146,7 +146,7 @@ How these were measured:
 
 | | 100 VUs, 60 s | 200 VUs, 60 s |
 | --- | --- | --- |
-| HTTP requests (throughput) | 69,521 (1,009 req/s) | 42,161 (561 req/s) |
+| HTTP requests (throughput) | 69,521 (1,009 req/s) | 42,161 (see note below) |
 | Holds won / lost to a race (409) | 17,018 / 18,451 | 12,017 / 6,094 |
 | Bookings created | 17,018 | 12,017 |
 | Idempotent replays returning the same booking | 17,018 / 17,018 | 12,017 / 12,017 |
@@ -160,6 +160,7 @@ How these were measured:
 - They come from **one Windows 11 laptop** (12 logical CPUs; Docker Desktop VM with 7.6 GB RAM). The app, PostgreSQL and k6 all ran on it, while other unrelated builds were running too.
 - They show the locking holds under contention. They are not a capacity figure for real hardware.
 - At 200 VUs, throughput drops and confirm latency rises because the 30-connection pool and the shared CPU saturate. Every confirm does an idempotency lookup plus a 3-row write transaction.
+- The 561 req/s figure that used to be quoted for the 200 VU column was **not reproduced** when the same commit was re-run in the A/B session below (699 and 837 req/s), so it is no longer claimed. Treat throughput as machine-dependent; the latency and correctness rows are the stable part.
 - An earlier run at 200 VUs on a cold JVM, without warm-up, measured confirm p95 at 2.3 s. That also had 0 double bookings.
 
 ## Project layout
@@ -188,21 +189,34 @@ that consumers use to de-duplicate. If Kafka is unreachable the booking API keep
 events wait in the table (covered by `OutboxKafkaTest`, which pauses a real broker container).
 `docker compose up` starts Kafka in KRaft mode (no Zookeeper).
 
-### After the outbox and Kafka (2026-11-21)
+### Does the outbox cost throughput? Controlled runs (2026-11-21)
 
-The table above was measured on commit `bd57d6b`, **before** the outbox, Kafka and notification service existed. Every hold, release, expiry and confirm now also inserts an outbox row, so I re-ran the 200 VU scenario on the full stack (PostgreSQL, Kafka, API, notification-service; fresh DB, 20 s warm-up at 50 VUs, 8 shows, same laptop, other jobs running, so treat it as indicative):
+An earlier single re-run on the full stack showed 240 req/s and confirm p95 2,091 ms, which looked like a large outbox penalty. A single run on a shared laptop cannot support that claim, so I ran back-to-back pairs with one script, [`load/ab.sh`](load/ab.sh):
 
-| 200 VUs, 60 s | before (`bd57d6b`) | with outbox + Kafka + consumer |
-| --- | --- | --- |
-| HTTP requests (throughput) | 42,161 (561 req/s) | 22,311 (240 req/s) |
-| Bookings created | 12,017 | 6,947 |
-| Double bookings (SQL check) | 0 | 0 |
-| Replay mismatches / unexpected statuses | 0 / 0 | 0 / 0 |
-| Hold p95 | 273 ms | 212 ms |
-| Confirm p95 | 1,227 ms | 2,091 ms |
-| Outbox events not yet published after the run | n/a | 0 of 13,894 |
+- Core services only (PostgreSQL, Kafka, API; no Grafana/Prometheus), `docker compose down -v` before every run, one stack at a time.
+- Warm-up: 20 s at 50 VUs on 1 show, then the tables are truncated. Measured run: 200 VUs, 60 s, 8 shows (20,800 seats).
+- A = outbox relay off (`BOOKING_OUTBOX_ENABLED=false`), B = relay on. Baseline (BL) = commit `bd57d6b` (before outbox/Kafka existed), same script and k6 scenario.
+- Hold p95 and confirm p95 are in ms. Raw k6 output, pool samples and SQL checks for every run are in [`load/measured/ab/`](load/measured/ab/).
 
-Correctness held and the outbox fully drained, but confirm latency and throughput are worse: this is a single shared laptop running six containers, the extra insert lengthens every transaction, and the machine was not idle, so the size of the gap is not a clean measurement of the outbox alone. Raw output: `load/measured/2026-11-21_200vu_60s_outbox_kafka.txt` and `..._verify.txt`.
+| Run | Code | req/s | Bookings | Hold p95 | Confirm p95 | Double bookings |
+| --- | --- | --- | --- | --- | --- | --- |
+| A1 | relay off | 304 | 8,657 | 174 | 1,866 | 0 |
+| B1 | relay on | 148 | 5,017 | 311 | 3,201 | 0 |
+| A2 | relay off | 679 | 13,770 | 313 | 1,217 | 0 |
+| B2 | relay on | 752 | 15,010 | 184 | 1,158 | 0 |
+| BL1 | `bd57d6b` | 837 | 17,345 | 176 | 1,069 | 0 |
+| BL2 | `bd57d6b` | 699 | 14,611 | 162 | 1,104 | 0 |
+| B3 | relay on | 334 | 9,048 | 210 | 1,817 | 0 |
+
+Every run also had 0 replay mismatches and 0 unexpected statuses.
+
+What this does and does not show:
+- **Correctness is stable.** 0 seats booked twice in all seven runs (SQL check).
+- **Run-to-run noise is larger than any effect I can measure.** The same configuration ranged from 148 to 752 req/s (relay on) and 304 to 679 req/s (relay off). The first run of each pair (A1, B1) was slow, which I attribute to a cold JVM and a busy machine (other jobs were running), but B3 was also slow with no obvious change, so noise is not limited to run 1. I did not control the machine's load.
+- **In the best runs the relay is not visible.** B2 (752 req/s, confirm p95 1,158 ms) matched or beat A2 (679, 1,217), and the pre-Kafka baseline's warm confirm p95 (1,069 and 1,104 ms) is in the same range as B2. So the earlier 561 to 240 req/s drop is not attributable to the outbox relay; it is mostly measurement noise.
+- **The baseline is somewhat faster on average** (699 to 837 req/s versus 334 to 752 for relay-on runs), which is what the extra outbox insert per transition would predict, but three relay-on runs against two baseline runs on a shared laptop are not enough to put a number on it.
+- **Pool saturation shows up as bursts.** HikariCP pending-connection samples (every 5 s, in `*.pool.txt`) were 0 in A1 and B1 but spiked in the warm runs (up to 161 in A2, 85 in B2, 47 in B3), i.e. the 30-connection pool is the bottleneck at 200 VUs whether or not the relay runs. The baseline build exposes no metrics, so it has no pool samples.
+- BL1/BL2: the baseline schema has no `outbox_event` table, so the post-warm-up truncate in `ab.sh` failed and the warm-up bookings stayed in the database. The k6 counts are for the measured phase only; the SQL double-booking check covered warm-up plus measured bookings (18,571 and 17,057 rows).
 
 ## notification-service (second service)
 
