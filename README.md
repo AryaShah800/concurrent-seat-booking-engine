@@ -12,11 +12,28 @@ A Spring Boot 3 / PostgreSQL backend for ticket-style seat booking that guarante
   - Concurrent duplicates collapse into one booking.
 - **Database as the last line of defence.** UNIQUE constraints on `bookings.seat_id`, `bookings.hold_id` and `bookings.idempotency_key`.
 
-**Not included:** Redis, Kafka and authentication. Holds live in PostgreSQL. A Redis or Kafka integration would be a future extension and is not claimed here.
+- **Booking events over Kafka.** Every state change is written to a transactional outbox and relayed to Kafka (at-least-once). A second service, `notification-service`, consumes them idempotently, with a dead-letter topic.
+- **Metrics, dashboard and UI.** Micrometer + Prometheus + Grafana, and a small seat map page.
+
+**Not included:** Redis and authentication. Holds live in PostgreSQL (the source of truth for who may book what), which is a deliberate choice, see [Design decisions](#design-decisions-and-trade-offs).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    client([Client / seat map UI]) -->|REST| api[Booking API<br/>Spring Boot]
+    api -->|"hold / confirm<br/>(one transaction)"| pg[(PostgreSQL<br/>seats, holds, bookings,<br/>outbox_event)]
+    pg -->|"poll, FOR UPDATE SKIP LOCKED"| relay[Outbox publisher]
+    relay -->|"acks=all, key = seatId"| kafka{{Kafka KRaft<br/>booking.events}}
+    kafka --> notif[notification-service<br/>idempotent consumer]
+    notif --> ndb[(PostgreSQL<br/>notifications DB)]
+    kafka -.->|"poison / retries exhausted"| dlt{{booking.events.DLT}}
+    api -->|/actuator/prometheus| prom[Prometheus] --> graf[Grafana]
+```
 
 ## Stack
 
-Java 21 · Spring Boot 3.5 (Web, Data JPA, Validation, Actuator) · PostgreSQL 16 · Flyway · springdoc-openapi (Swagger UI) · JUnit 5 + Testcontainers · JaCoCo · k6 · Docker / Docker Compose · GitHub Actions
+Java 21 · Spring Boot 3.5 (Web, Data JPA, Validation, Actuator, Kafka) · PostgreSQL 16 · Apache Kafka (KRaft) · Flyway · Micrometer / Prometheus / Grafana · springdoc-openapi (Swagger UI) · JUnit 5 + Testcontainers · JaCoCo · k6 · Docker / Docker Compose · GitHub Actions
 
 ## How a booking works
 
@@ -61,10 +78,19 @@ Interactive docs: `http://localhost:8080/swagger-ui.html` (OpenAPI JSON at `/v3/
 
 Errors use RFC 9457 problem details with a stable `code` field.
 
+## Design decisions and trade-offs
+
+- **Optimistic locking, not row locks or a distributed lock.** Contention on one seat is short and the loser should fail fast with a 409, not queue. A version check costs one failed UPDATE per loser and needs no lock manager. Under heavy contention on a single hot seat most requests are wasted work; that is acceptable for seat maps where demand spreads over many seats.
+- **Holds live in PostgreSQL, not Redis.** A hold and the seat it blocks change in one transaction, so they cannot disagree. A Redis hold store would need its own expiry and a reconciliation story for crashes between the two systems. The cost is more write load on PostgreSQL; the load test below shows what that costs.
+- **Transactional outbox, not "write DB then publish".** Publishing from the request thread can lose an event (crash after commit) or announce a change that rolled back. The outbox row commits or rolls back with the seat change. The relay is at-least-once, so events carry an `eventId` and consumers de-duplicate on it. Ordering is per seat (Kafka key = seat id), not global.
+- **Broker outage does not break bookings.** Events queue in `outbox_event` and drain when Kafka returns (tested by pausing a real broker). `seatbooking_outbox_unpublished` shows the backlog. Published rows are purged after 7 days by default.
+- **Separate database per service.** `notification-service` never reads the booking tables; the event JSON (`contracts/booking-event.schema.json`) is the only coupling, checked by a test in both services.
+- **Idempotency by key plus request fingerprint.** The same key with a different body is a client bug and gets 422, not a silent replay.
+
 ## Run it
 
 ```bash
-docker compose up -d --build          # PostgreSQL 16 + API on http://localhost:8080
+docker compose up -d --build          # PostgreSQL 16, Kafka, API on http://localhost:8080, notification-service on :8081
 # or, with a local PostgreSQL: mvn spring-boot:run  (DB_URL / DB_USERNAME / DB_PASSWORD)
 ```
 
@@ -75,7 +101,8 @@ The compose file's database password is a local-development default. Set `DB_PAS
 ## Tests
 
 ```bash
-mvn verify      # needs Docker: Testcontainers starts postgres:16
+mvn verify                          # engine; needs Docker: Testcontainers starts postgres:16-alpine and apache/kafka:3.9.0
+(cd notification-service && mvn verify)   # consumer service, same containers
 ```
 
 All integration tests run against a **real PostgreSQL 16 in Testcontainers**, not H2, so the locking and constraint behaviour is PostgreSQL's own. A mutable test clock makes hold expiry deterministic, with no sleeps.
@@ -160,6 +187,22 @@ marks the row published. Delivery is **at-least-once**: each payload carries a u
 that consumers use to de-duplicate. If Kafka is unreachable the booking API keeps working and the
 events wait in the table (covered by `OutboxKafkaTest`, which pauses a real broker container).
 `docker compose up` starts Kafka in KRaft mode (no Zookeeper).
+
+### After the outbox and Kafka (2026-11-21)
+
+The table above was measured on commit `bd57d6b`, **before** the outbox, Kafka and notification service existed. Every hold, release, expiry and confirm now also inserts an outbox row, so I re-ran the 200 VU scenario on the full stack (PostgreSQL, Kafka, API, notification-service; fresh DB, 20 s warm-up at 50 VUs, 8 shows, same laptop, other jobs running, so treat it as indicative):
+
+| 200 VUs, 60 s | before (`bd57d6b`) | with outbox + Kafka + consumer |
+| --- | --- | --- |
+| HTTP requests (throughput) | 42,161 (561 req/s) | 22,311 (240 req/s) |
+| Bookings created | 12,017 | 6,947 |
+| Double bookings (SQL check) | 0 | 0 |
+| Replay mismatches / unexpected statuses | 0 / 0 | 0 / 0 |
+| Hold p95 | 273 ms | 212 ms |
+| Confirm p95 | 1,227 ms | 2,091 ms |
+| Outbox events not yet published after the run | n/a | 0 of 13,894 |
+
+Correctness held and the outbox fully drained, but confirm latency and throughput are worse: this is a single shared laptop running six containers, the extra insert lengthens every transaction, and the machine was not idle, so the size of the gap is not a clean measurement of the outbox alone. Raw output: `load/measured/2026-11-21_200vu_60s_outbox_kafka.txt` and `..._verify.txt`.
 
 ## notification-service (second service)
 
