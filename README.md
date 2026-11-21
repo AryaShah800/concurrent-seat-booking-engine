@@ -150,3 +150,13 @@ load/           k6 script, SQL double-booking check, measured k6 summaries
 ## License
 
 MIT
+
+## Booking events (transactional outbox to Kafka)
+
+Every hold, release, expiry and confirmation writes a row to `outbox_event` in the same database
+transaction as the seat change. `OutboxPublisher` relays unpublished rows to the Kafka topic
+`booking.events` (key = seat id) using `FOR UPDATE SKIP LOCKED`, waits for the broker ack, then
+marks the row published. Delivery is **at-least-once**: each payload carries a unique `eventId`
+that consumers use to de-duplicate. If Kafka is unreachable the booking API keeps working and the
+events wait in the table (covered by `OutboxKafkaTest`, which pauses a real broker container).
+`docker compose up` starts Kafka in KRaft mode (no Zookeeper).
