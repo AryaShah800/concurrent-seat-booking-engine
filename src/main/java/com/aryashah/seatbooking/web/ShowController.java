@@ -37,6 +37,13 @@ public class ShowController {
         return ResponseEntity.created(URI.create("/api/shows/" + show.getId())).body(ShowResponse.of(show));
     }
 
+    @Operation(summary = "The most recently created show (404 if there is none yet)")
+    @GetMapping("/latest")
+    public ShowResponse latest() {
+        return showService.latestShow().map(ShowResponse::of)
+                .orElseThrow(() -> com.aryashah.seatbooking.service.ApiException.notFound("Show"));
+    }
+
     @Operation(summary = "List the seats of a show and their current status")
     @GetMapping("/{showId}/seats")
     public List<SeatResponse> seats(@PathVariable Long showId) {

@@ -126,7 +126,7 @@
 (() => {
   // Only a numeric show id is used; it also ends up in the page text.
   const rawShow = new URLSearchParams(location.search).get('show');
-  const showId = /^\d{1,9}$/.test(rawShow || '') ? rawShow : '1';
+  let showId = /^\d{1,9}$/.test(rawShow || '') ? rawShow : null;
   const params = new URLSearchParams(location.search);
   const me = params.get('as') || sessionStorage.getItem('customer') || ('guest-' + Math.random().toString(36).slice(2, 8));
   sessionStorage.setItem('customer', me);
@@ -151,6 +151,12 @@
   }
 
   async function load() {
+    if (showId === null) {
+      // No ?show= in the link: open the newest show instead of an empty "show 1".
+      const latest = await api('/api/shows/latest');
+      showId = latest.ok && latest.body && latest.body.id ? String(latest.body.id) : '1';
+      $('title').textContent = 'Seat map, show ' + showId;
+    }
     const r = await api('/api/shows/' + showId + '/seats');
     if (!r.ok) { seats = []; render(); return; }
     seats = r.body;
@@ -319,7 +325,7 @@
 
   setInterval(tickHold, 250);
   setInterval(load, 3000);
-  $('title').textContent = 'Seat map, show ' + showId;
+  if (showId !== null) $('title').textContent = 'Seat map, show ' + showId;
   load();
 })();
 </script>

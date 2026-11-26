@@ -41,6 +41,11 @@ public class ShowService {
     }
 
     @Transactional(readOnly = true)
+    /** The most recently created show, if any (the demo page opens it by default). */
+    public java.util.Optional<Show> latestShow() {
+        return shows.findTopByOrderByIdDesc();
+    }
+
     public List<Seat> seatsFor(Long showId) {
         if (!shows.existsById(showId)) {
             throw ApiException.notFound("Show " + showId);
