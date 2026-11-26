@@ -45,4 +45,19 @@ class DemoPrunerTest extends IntegrationTest {
         assertThat(pruner.keepNewest((int) before + 5)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM shows", Long.class)).isEqualTo(before);
     }
+
+    @Test
+    void trimsOutboxRowsOlderThanAnHour() {
+        UUID oldId = UUID.randomUUID();
+        UUID freshId = UUID.randomUUID();
+        String insert = "INSERT INTO outbox_event (id, aggregate_id, event_type, payload, created_at) "
+                + "VALUES (?, '1', 'HoldPlaced', '{}'::jsonb, now() - (? * interval '1 minute'))";
+        jdbc.update(insert, oldId, 90);
+        jdbc.update(insert, freshId, 5);
+
+        pruner.trimUnpublishedOutbox();
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE id = ?", Long.class, oldId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE id = ?", Long.class, freshId)).isEqualTo(1);
+    }
 }

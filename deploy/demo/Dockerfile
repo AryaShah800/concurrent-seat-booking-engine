@@ -20,6 +20,7 @@ USER app
 ENV PGDATA=/home/app/pgdata \
     DB_URL=jdbc:postgresql://127.0.0.1:5432/seatbooking DB_USERNAME=app DB_PASSWORD=unused-local-trust DB_POOL_SIZE=8 \
     BOOKING_OUTBOX_ENABLED=false BOOKING_DEMO_ENABLED=true BOOKING_DEMO_MAX_SHOWS=50 \
+    MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info \
     JAVA_OPTS="-Xmx256m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -Xss512k -Duser.timezone=UTC"
 EXPOSE 8080
 CMD ["/app/start.sh"]
