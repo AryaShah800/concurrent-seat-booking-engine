@@ -46,6 +46,7 @@
           box-shadow: inset 0 0 0 1px var(--line); color: var(--text-2); font: 11px var(--mono); cursor: pointer;
           transition: background 120ms, transform 120ms; }
   .seat:hover:not(:disabled) { background: #3a3e48; transform: translateY(-1px); color: var(--text); }
+  @media (max-width: 600px) { .seat { width: 36px; height: 36px; } .row { grid-auto-columns: 36px; gap: 6px; } }
   .seat:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .seat.held { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); cursor: not-allowed; }
   .seat.mine { background: var(--accent); color: var(--accent-ink); box-shadow: none; cursor: default; }
@@ -104,13 +105,13 @@
     <aside>
       <div class="card" id="selection">
         <h2>Your hold</h2>
-        <div id="holdBody" class="muted">Pick a free seat to hold it.</div>
+        <div id="holdBody" class="muted" aria-live="polite">Pick a free seat to hold it.</div>
       </div>
       <div class="card">
         <h2>Race on one seat</h2>
         <div class="muted">Sends 20 simultaneous hold requests for the selected seat from 20 different customers.</div>
         <div class="actions"><button class="btn" id="race" disabled>Run race</button></div>
-        <div class="result" id="raceResult"></div>
+        <div class="result" id="raceResult" aria-live="polite"></div>
       </div>
       <div class="card">
         <h2>Hall</h2>
@@ -123,13 +124,16 @@
 
 <script>
 (() => {
-  const showId = new URLSearchParams(location.search).get('show') || '1';
+  // Only a numeric show id is used; it also ends up in the page text.
+  const rawShow = new URLSearchParams(location.search).get('show');
+  const showId = /^\d{1,9}$/.test(rawShow || '') ? rawShow : '1';
   const params = new URLSearchParams(location.search);
   const me = params.get('as') || sessionStorage.getItem('customer') || ('guest-' + Math.random().toString(36).slice(2, 8));
   sessionStorage.setItem('customer', me);
   const $ = (id) => document.getElementById(id);
   let seats = [];
-  let hold = null;          // { holdId, seatId, expiresAt, total }
+  let hold = null;          // { holdId, seatId, label, expiresAt, total, idempotencyKey }
+  let busy = false;         // a hold/confirm/release request is in flight
   let picked = null;        // selected seat id (for the race)
 
   const toast = (msg, err) => {
@@ -138,7 +142,9 @@
   };
 
   async function api(path, opts = {}) {
-    const res = await fetch(path, { headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) }, ...opts });
+    // Spread opts first: spreading it last let opts.headers replace the merged headers, which
+    // dropped Content-Type on Confirm (it sends Idempotency-Key) and the API answered 415.
+    const res = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
     const text = await res.text();
     let body = null; try { body = text ? JSON.parse(text) : null; } catch (e) { body = null; }
     return { ok: res.ok, status: res.status, body };
@@ -156,8 +162,14 @@
   function render() {
     const rows = $('rows');
     if (!seats.length) {
-      rows.innerHTML = '<div class="empty">No show with id ' + showId + ' yet.<div class="actions" style="justify-content:center"><button class="btn primary" id="create">Create a demo show</button></div></div>';
-      $('create').onclick = createShow;
+      // Built with textContent, never innerHTML: the id comes from the URL.
+      const empty = document.createElement('div'); empty.className = 'empty';
+      empty.textContent = 'No show with id ' + showId + ' yet.';
+      const actions = document.createElement('div'); actions.className = 'actions'; actions.style.justifyContent = 'center';
+      const create = document.createElement('button'); create.className = 'btn primary'; create.id = 'create';
+      create.textContent = 'Create a demo show'; create.onclick = createShow;
+      actions.appendChild(create); empty.appendChild(actions);
+      rows.replaceChildren(empty);
       $('counts').innerHTML = '';
       return;
     }
@@ -176,14 +188,41 @@
         b.title = s.label + (mine ? ' (yours)' : ' (' + s.status.toLowerCase() + ')');
         b.setAttribute('aria-label', 'Seat ' + s.label + ', ' + (mine ? 'held by you' : s.status.toLowerCase()));
         b.disabled = s.status !== 'AVAILABLE';
-        b.onclick = () => holdSeat(s);
+        b.setAttribute('aria-pressed', String(picked === s.id));
+        b.onclick = () => selectSeat(s);
         row.appendChild(b);
       });
       rows.appendChild(row);
     }
     const n = (st) => seats.filter(s => s.status === st).length;
     $('counts').innerHTML = '<span><b>' + n('AVAILABLE') + '</b> free</span><span><b>' + n('HELD') + '</b> held</span><span><b>' + n('BOOKED') + '</b> booked</span>';
-    $('race').disabled = !picked || !seats.find(s => s.id === picked && s.status === 'AVAILABLE');
+    if (picked && !seats.find(s => s.id === picked && s.status === 'AVAILABLE')) picked = null;
+    $('race').disabled = !picked;
+    if (!hold) renderSelection();
+  }
+
+  // Selecting a seat no longer holds it, so "Run race" works on any free seat you pick.
+  function selectSeat(s) {
+    picked = s.id;
+    render();
+  }
+
+  let shownSelection = null;
+  function renderSelection() {
+    const body = $('holdBody');
+    const s = seats.find(x => x.id === picked);
+    // Rebuild only when the selection changes, so the 3 s refresh keeps keyboard focus.
+    const key = (s ? s.id : '') + '|' + busy;
+    if (key === shownSelection && body.dataset.mode === 'select') return;
+    shownSelection = key; body.dataset.mode = 'select';
+    body.replaceChildren();
+    if (!s) { body.className = 'muted'; body.textContent = 'Pick a free seat to hold it or race for it.'; return; }
+    body.className = '';
+    const label = document.createElement('div'); label.className = 'muted'; label.textContent = 'Seat ' + s.label + ' selected';
+    const actions = document.createElement('div'); actions.className = 'actions';
+    const holdBtn = document.createElement('button'); holdBtn.className = 'btn primary'; holdBtn.textContent = 'Hold this seat';
+    holdBtn.disabled = busy; holdBtn.onclick = () => holdSeat(s);
+    actions.appendChild(holdBtn); body.append(label, actions);
   }
 
   async function createShow() {
@@ -192,45 +231,78 @@
   }
 
   async function holdSeat(s) {
-    picked = s.id;
-    if (hold) { toast('Release or confirm your current hold first', true); render(); return; }
-    const r = await api('/api/holds', { method: 'POST', body: JSON.stringify({ seatId: s.id, customerId: me }) });
-    if (r.status === 201) {
-      const exp = new Date(r.body.expiresAt).getTime();
-      hold = { holdId: r.body.holdId, seatId: s.id, label: s.label, expiresAt: exp, total: exp - Date.now() };
-      renderHold();
-    } else if (r.status === 409) {
-      toast('Seat ' + s.label + ' was just taken by someone else', true);
-    } else toast('Hold failed (' + r.status + ')', true);
+    if (hold) { toast('Release or confirm your current hold first', true); return; }
+    if (busy) return;
+    busy = true; renderSelection();
+    try {
+      const r = await api('/api/holds', { method: 'POST', body: JSON.stringify({ seatId: s.id, customerId: me }) });
+      if (r.status === 201) {
+        const exp = new Date(r.body.expiresAt).getTime();
+        // One Idempotency-Key per hold: a retried or double-clicked confirm is the same request.
+        hold = { holdId: r.body.holdId, seatId: s.id, label: s.label, expiresAt: exp, total: exp - Date.now(), idempotencyKey: crypto.randomUUID() };
+        picked = null;
+        buildHold();
+      } else if (r.status === 409) {
+        toast('Seat ' + s.label + ' was just taken by someone else', true);
+      } else toast('Hold failed (' + r.status + ')', true);
+    } finally {
+      busy = false;
+    }
     await load();
   }
 
-  function renderHold() {
+  // The hold panel is built once; the 250 ms tick only updates the countdown text and bar,
+  // so keyboard focus on Confirm/Release survives (rebuilding innerHTML used to drop it).
+  function buildHold() {
     const body = $('holdBody');
-    if (!hold) { body.className = 'muted'; body.textContent = 'Pick a free seat to hold it.'; return; }
+    body.className = ''; body.replaceChildren(); body.dataset.mode = 'hold';
+    const label = document.createElement('div'); label.className = 'muted'; label.textContent = 'Seat ' + hold.label + ' held for you';
+    const clock = document.createElement('div'); clock.className = 'big'; clock.id = 'holdClock';
+    clock.setAttribute('aria-live', 'off');
+    const bar = document.createElement('div'); bar.className = 'bar';
+    const fill = document.createElement('i'); fill.id = 'holdBar'; bar.appendChild(fill);
+    const actions = document.createElement('div'); actions.className = 'actions';
+    const confirmBtn = document.createElement('button'); confirmBtn.className = 'btn primary'; confirmBtn.id = 'confirm'; confirmBtn.textContent = 'Confirm booking';
+    const releaseBtn = document.createElement('button'); releaseBtn.className = 'btn'; releaseBtn.id = 'release'; releaseBtn.textContent = 'Release';
+    confirmBtn.onclick = confirm_; releaseBtn.onclick = release_;
+    actions.append(confirmBtn, releaseBtn);
+    body.append(label, clock, bar, actions);
+    tickHold();
+  }
+
+  function tickHold() {
+    if (!hold) return;
     const left = Math.max(0, hold.expiresAt - Date.now());
-    if (left === 0) { hold = null; renderHold(); load(); toast('Your hold expired'); return; }
+    if (left === 0) { hold = null; toast('Your hold expired'); load(); return; }
     const s = Math.ceil(left / 1000);
-    body.className = '';
-    body.innerHTML = '<div class="muted">Seat ' + hold.label + '</div><div class="big">' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '</div>' +
-      '<div class="bar"><i style="width:' + (100 * left / hold.total) + '%"></i></div>' +
-      '<div class="actions"><button class="btn primary" id="confirm">Confirm booking</button><button class="btn" id="release">Release</button></div>';
-    $('confirm').onclick = confirm_; $('release').onclick = release_;
+    $('holdClock').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    $('holdBar').style.width = (100 * left / hold.total) + '%';
+  }
+
+  function setHoldButtonsBusy(on) {
+    busy = on;
+    ['confirm', 'release'].forEach(id => { const b = $(id); if (b) b.disabled = on; });
   }
 
   async function confirm_() {
-    const key = crypto.randomUUID();
-    const r = await api('/api/bookings', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ holdId: hold.holdId, customerId: me }) });
+    if (busy || !hold) return;
+    setHoldButtonsBusy(true);
+    const current = hold;
+    const r = await api('/api/bookings', { method: 'POST', headers: { 'Idempotency-Key': current.idempotencyKey }, body: JSON.stringify({ holdId: current.holdId, customerId: me }) });
+    setHoldButtonsBusy(false);
     if (r.status === 201 || r.status === 200) {
-      toast('Booked seat ' + hold.label); hold = null; picked = null; renderHold();
+      toast('Booked seat ' + current.label); hold = null;
     } else toast('Could not confirm (' + r.status + ')', true);
     await load();
   }
 
   async function release_() {
+    if (busy || !hold) return;
+    setHoldButtonsBusy(true);
     const r = await api('/api/holds/' + hold.holdId + '?customerId=' + encodeURIComponent(me), { method: 'DELETE' });
+    setHoldButtonsBusy(false);
     if (!r.ok) toast('Could not release (' + r.status + ')', true);
-    hold = null; renderHold(); await load();
+    hold = null; await load();
   }
 
   $('race').onclick = async () => {
@@ -245,7 +317,7 @@
     picked = null; await load();
   };
 
-  setInterval(() => { if (hold) renderHold(); }, 250);
+  setInterval(tickHold, 250);
   setInterval(load, 3000);
   $('title').textContent = 'Seat map, show ' + showId;
   load();
