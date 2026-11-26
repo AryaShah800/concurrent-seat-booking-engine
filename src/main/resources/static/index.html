@@ -154,7 +154,8 @@
     if (showId === null) {
       // No ?show= in the link: open the newest show instead of an empty "show 1".
       const latest = await api('/api/shows/latest');
-      showId = latest.ok && latest.body && latest.body.id ? String(latest.body.id) : '1';
+      if (!latest.ok) { await createShow(); return; } // fresh or reset demo: start with a show
+      showId = String(latest.body.id);
       $('title').textContent = 'Seat map, show ' + showId;
     }
     const r = await api('/api/shows/' + showId + '/seats');
