@@ -80,8 +80,14 @@ public class BookingService {
                     throw ApiException.seatUnavailable(seatId);
                 }
                 if (seat.getStatus() == SeatStatus.HELD && seat.getHoldId() != null) {
-                    // The previous hold lapsed, but the sweeper hasn't cleared it yet.
-                    holds.findById(seat.getHoldId()).ifPresent(Hold::markExpired);
+                    // The previous hold lapsed, but the sweeper hasn't cleared it yet. Expire it here
+                    // and publish HoldExpired, as the sweeper would; the sweeper will now skip it.
+                    holds.findById(seat.getHoldId())
+                            .filter(old -> old.getStatus() == HoldStatus.ACTIVE)
+                            .ifPresent(old -> {
+                                old.markExpired();
+                                outbox.write(OutboxWriter.HOLD_EXPIRED, seatId, old.getId(), null, old.getCustomerId());
+                            });
                 }
                 Hold hold = new Hold(UUID.randomUUID(), seatId, customerId, now, now.plus(properties.holdTtl()));
                 seat.hold(hold.getId(), hold.getExpiresAt());
@@ -110,7 +116,8 @@ public class BookingService {
                 if (!hold.getCustomerId().equals(customerId)) {
                     throw ApiException.holdNotOwned();
                 }
-                if (hold.getStatus() != HoldStatus.ACTIVE) {
+                // An expired hold is not active even before the sweeper marks it, same as confirm().
+                if (hold.getStatus() != HoldStatus.ACTIVE || hold.isExpiredAt(clock.instant())) {
                     throw ApiException.holdNotActive();
                 }
                 hold.markReleased();

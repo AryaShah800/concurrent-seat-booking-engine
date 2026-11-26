@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class BookingLifecycleTest extends IntegrationTest {
 
@@ -24,6 +25,15 @@ class BookingLifecycleTest extends IntegrationTest {
 
     @Autowired
     private HoldRepository holdRepository;
+
+    @Autowired
+    private JdbcTemplate jdbc;
+
+    private int outboxCount(String eventType, UUID holdId) {
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE event_type = ? AND payload->>'holdId' = ?",
+                Integer.class, eventType, holdId.toString());
+    }
 
     @Test
     void holdThenConfirm_booksTheSeat() {
@@ -184,5 +194,39 @@ class BookingLifecycleTest extends IntegrationTest {
         assertThatThrownBy(() -> bookingService.getBooking(UUID.randomUUID()))
                 .isInstanceOf(ApiException.class)
                 .extracting("code").isEqualTo("NOT_FOUND");
+    }
+
+    @Test
+    void takingOverALapsedHold_publishesHoldExpiredOnce_andTheSweeperDoesNotRepeatIt() {
+        Seat seat = newSeat();
+        Hold aliceHold = bookingService.placeHold(seat.getId(), "alice");
+        clock.advance(Duration.ofMinutes(2).plusSeconds(1));
+
+        bookingService.placeHold(seat.getId(), "bob");
+        bookingService.expireHolds();
+
+        assertThat(outboxCount("HoldExpired", aliceHold.getId())).isEqualTo(1);
+    }
+
+    @Test
+    void releasingAnExpiredHold_isRejectedEvenBeforeTheSweeperRuns() {
+        Seat seat = newSeat();
+        Hold hold = bookingService.placeHold(seat.getId(), "alice");
+        clock.advance(Duration.ofMinutes(3));
+
+        assertThatThrownBy(() -> bookingService.releaseHold(hold.getId(), "alice"))
+                .isInstanceOf(ApiException.class)
+                .extracting("code").isEqualTo("HOLD_NOT_ACTIVE");
+        assertThat(outboxCount("HoldReleased", hold.getId())).isZero();
+    }
+
+    @Test
+    void latestShow_isTheMostRecentlyCreatedOne() {
+        Seat older = newSeat();
+        Seat newer = newSeat();
+
+        assertThat(showService.latestShow().orElseThrow().getId())
+                .isEqualTo(seatRepository.findById(newer.getId()).orElseThrow().getShowId())
+                .isNotEqualTo(seatRepository.findById(older.getId()).orElseThrow().getShowId());
     }
 }
