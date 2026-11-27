@@ -129,6 +129,34 @@ class OutboxKafkaTest extends IntegrationTest {
     }
 
     @Test
+    void concurrentSweepersWriteOneHoldExpiredEventPerHold() throws Exception {
+        Seat seat = newSeat();
+        Hold hold = bookingService.placeHold(seat.getId(), "erin");
+        clock.advance(Duration.ofMinutes(3));
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+            java.util.List<java.util.concurrent.Future<Integer>> runs = new java.util.ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                runs.add(pool.submit(() -> {
+                    start.await();
+                    return bookingService.expireHolds();
+                }));
+            }
+            start.countDown();
+            for (java.util.concurrent.Future<Integer> run : runs) {
+                run.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+        Integer n = jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE event_type = 'HoldExpired' AND payload->>'holdId' = ?",
+                Integer.class, hold.getId().toString());
+        assertThat(n).isEqualTo(1);
+    }
+
+    @Test
     void purgeDeletesOnlyOldPublishedRows() {
         UUID oldPublished = UUID.randomUUID();
         UUID recentPublished = UUID.randomUUID();
