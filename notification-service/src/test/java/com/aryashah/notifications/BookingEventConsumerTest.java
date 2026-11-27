@@ -102,6 +102,23 @@ class BookingEventConsumerTest {
     }
 
     @Test
+    void eventsWithBadFieldTypesGoToTheDeadLetterTopicUnprocessed() {
+        UUID badSeat = UUID.randomUUID();
+        UUID noBooking = UUID.randomUUID();
+        kafka.send("booking.events", "7", "{\"eventId\":\"" + badSeat
+                + "\",\"eventType\":\"BookingConfirmed\",\"seatId\":\"abc\",\"bookingId\":\""
+                + UUID.randomUUID() + "\",\"customerId\":\"alice\"}");
+        kafka.send("booking.events", "7", "{\"eventId\":\"" + noBooking
+                + "\",\"eventType\":\"BookingConfirmed\",\"seatId\":7,\"customerId\":\"alice\"}");
+
+        assertThat(readTopic("booking.events.DLT", badSeat.toString())).hasSize(1);
+        assertThat(readTopic("booking.events.DLT", noBooking.toString())).hasSize(1);
+        Integer processed = jdbc.queryForObject(
+                "SELECT count(*) FROM processed_event WHERE event_id IN (?, ?)", Integer.class, badSeat, noBooking);
+        assertThat(processed).isZero();
+    }
+
+    @Test
     void contractSchemaAcceptsRealPayloadsAndRejectsBrokenOnes() throws Exception {
         JsonSchema schema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
                 .getSchema(Files.readString(Path.of("../contracts/booking-event.schema.json")));

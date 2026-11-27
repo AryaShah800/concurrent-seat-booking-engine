@@ -31,6 +31,16 @@ public class BookingEventListener {
             if (!event.hasNonNull("eventType") || !event.hasNonNull("customerId") || !event.hasNonNull("seatId")) {
                 throw new IllegalArgumentException("missing required field");
             }
+            // Check types here too: a bad seatId or bookingId would otherwise fail inside the
+            // transaction, be retried three times for nothing, or (asLong) silently become 0.
+            if (!event.get("seatId").canConvertToExactIntegral()) {
+                throw new IllegalArgumentException("seatId is not an integer");
+            }
+            if (event.hasNonNull("bookingId")) {
+                UUID.fromString(event.get("bookingId").asText());
+            } else if ("BookingConfirmed".equals(event.get("eventType").asText())) {
+                throw new IllegalArgumentException("BookingConfirmed without bookingId");
+            }
         } catch (Exception e) {
             throw new PoisonMessageException("Unreadable booking event", e);
         }
