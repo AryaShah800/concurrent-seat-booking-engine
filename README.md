@@ -112,13 +112,16 @@ All integration tests run against a **real PostgreSQL 16 in Testcontainers**, no
 | Test class | What it proves |
 | --- | --- |
 | `ConcurrentBookingTest` | **50 threads race for one seat behind a start gate: exactly 1 hold wins, 49 get `SEAT_UNAVAILABLE`** (repeated 5 times). 20 concurrent confirms with the same key give 1 booking and 19 replays of it. 20 confirms with different keys give 1 booking. 50 HTTP clients doing hold and confirm on one seat give exactly one `201`, one booking and 49 `409`s. |
-| `BookingLifecycleTest` | Hold then confirm; booked and held seats block others; expired holds free the seat and can't be confirmed; sweeper; release; ownership checks; idempotent retry; key reuse rejected; 404s |
+| `BookingLifecycleTest` | Hold then confirm; booked and held seats block others; expired holds free the seat and can't be confirmed; sweeper; release; ownership checks; idempotent retry; key reuse rejected; 404s; a new show's seat grid is inserted in row order |
 | `BookingApiTest` | REST contract end to end: status codes, `Idempotent-Replayed` header, validation errors, problem details, OpenAPI and health endpoints |
+| `OutboxKafkaTest` | Against a real Kafka broker: a confirmed booking is published exactly once with an event id; events written while the broker is paused arrive after it recovers; a failed confirm leaves no event; an expired hold produces one `HoldExpired`, **even with four sweepers running at once**; only old published rows are purged |
+| `OutboxPublisherBatchTest` | A partly failed send marks nothing published; a fully acknowledged batch is marked in one UPDATE |
+| `DemoPrunerTest` | The public demo keeps only the newest shows (with their seats, holds and bookings) and trims old outbox rows |
+| `MetricsEndpointTest`, `SeatMapPageTest` | Prometheus exposes the booking metrics; the seat map page is served at `/` |
 | `SeatTest`, `BookingPropertiesTest` | Plain unit tests of the state rules and config |
-
 | `BookingServiceTest` | Mockito unit tests that force rare race interleavings deterministically. Example: a duplicate same-key confirm that reads the hold just after the winner committed must replay the booking, not return 409. CI's concurrency test caught this case once before it was fixed. |
 
-Latest local run (JDK 24 compiling for Java 21, Windows 11, Docker Desktop): **38 test executions (34 test methods), 0 failures.** JaCoCo coverage from that run: **91.9% of lines, 77.5% of branches.** CI runs the same `mvn verify` on JDK 21 and prints the coverage in the job summary. The CI run for commit `c1207cd` had 38 tests, 0 failures, **92.3% line and 78.9% branch coverage**.
+CI runs `mvn verify` on JDK 21 and prints the JaCoCo coverage in the job summary. The CI run for commit `c4f711c` had **55 test executions, 0 failures, 91.7% line and 76.2% branch coverage**. `notification-service` has 5 more tests (exactly-once handling of redelivered events, malformed and badly typed events going to the dead-letter topic, and the shared event contract).
 
 ## Load test (k6)
 
