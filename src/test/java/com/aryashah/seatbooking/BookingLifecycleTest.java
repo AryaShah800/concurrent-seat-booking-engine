@@ -96,6 +96,18 @@ class BookingLifecycleTest extends IntegrationTest {
     }
 
     @Test
+    void createShow_insertsTheWholeGridInRowOrder() {
+        java.util.List<Seat> grid = newShowWithSeats(3, 4);
+
+        assertThat(grid).extracting(Seat::getLabel).containsExactly(
+                "A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4", "C1", "C2", "C3", "C4");
+        assertThat(grid).allSatisfy(s -> {
+            assertThat(s.getStatus()).isEqualTo(SeatStatus.AVAILABLE);
+            assertThat(s.getVersion()).isZero();
+        });
+    }
+
+    @Test
     void sweeper_releasesSeatsWithExpiredHolds() {
         Seat seat = newSeat();
         Hold hold = bookingService.placeHold(seat.getId(), "alice");
