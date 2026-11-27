@@ -33,6 +33,12 @@ class OutboxPublisherBatchTest {
     private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
 
     private OutboxPublisher publisher() {
+        return publisher(true);
+    }
+
+    private OutboxPublisher publisher(boolean relayLockFree) {
+        when(jdbc.queryForObject(anyString(), ArgumentMatchers.eq(Boolean.class), ArgumentMatchers.<Object>any()))
+                .thenReturn(relayLockFree);
         PlatformTransactionManager tm = mock(PlatformTransactionManager.class);
         when(tm.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         return new OutboxPublisher(jdbc, kafka, tm, Clock.systemUTC(),
@@ -81,5 +87,15 @@ class OutboxPublisherBatchTest {
         assertThat(publisher().publishBatch()).isEqualTo(3);
 
         verify(jdbc).update(anyString(), ArgumentMatchers.<PreparedStatementSetter>any());
+    }
+
+    @Test
+    void anotherInstanceRelaying_skipsThePollWithoutReadingOrSending() {
+        rows(3);
+
+        assertThat(publisher(false).publishBatch()).isZero();
+
+        verify(kafka, never()).send(anyString(), anyString(), anyString());
+        verify(jdbc, never()).update(anyString(), ArgumentMatchers.<PreparedStatementSetter>any());
     }
 }
