@@ -201,11 +201,10 @@ public class BookingService {
     public int expireHolds() {
         Integer released = tx.execute(status -> {
             Instant now = clock.instant();
-            for (Hold lapsed : holds.findByStatusAndExpiresAtLessThanEqual(HoldStatus.ACTIVE, now)) {
+            for (HoldRepository.ExpiredHold lapsed : holds.expireActiveHoldsReturning(now)) {
                 outbox.write(OutboxWriter.HOLD_EXPIRED, lapsed.getSeatId(), lapsed.getId(), null,
                         lapsed.getCustomerId());
             }
-            holds.expireActiveHolds(now, HoldStatus.ACTIVE, HoldStatus.EXPIRED);
             return seats.releaseExpiredHolds(now, SeatStatus.HELD, SeatStatus.AVAILABLE);
         });
         int n = released == null ? 0 : released;
