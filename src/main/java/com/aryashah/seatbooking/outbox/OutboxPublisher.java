@@ -19,8 +19,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 /**
  * Relays unpublished outbox rows to Kafka.
  *
- * <p>Each poll locks a batch with {@code FOR UPDATE SKIP LOCKED} (so several app instances never
- * publish the same row at the same time), sends it, waits for the broker ack, and only then
+ * <p>Only one instance relays at a time: each batch first takes a transaction-scoped PostgreSQL
+ * advisory lock and skips the poll if another instance holds it. With SKIP LOCKED alone, two
+ * instances could take different batches and publish a seat's later event (HoldExpired) before
+ * its earlier one (HoldPlaced), which breaks per-seat ordering for consumers.
+ *
+ * <p>The batch is locked with {@code FOR UPDATE SKIP LOCKED}, sent, the broker ack awaited, and only then
  * stamps {@code published_at}. If Kafka is down the send fails, the transaction rolls back and
  * the rows stay unpublished until the next poll. A crash after the ack but before the commit
  * re-sends the row, so delivery is at-least-once and consumers must de-duplicate on eventId.
@@ -30,6 +34,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class OutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
+
+    /** Arbitrary constant key for pg_try_advisory_xact_lock: "the outbox relay". */
+    static final long RELAY_LOCK_KEY = 0x5EA7_B00C_0001L;
 
     private final JdbcTemplate jdbc;
     private final KafkaTemplate<String, String> kafka;
@@ -61,6 +68,11 @@ public class OutboxPublisher {
     /** Publishes one batch and returns how many rows were sent. Throws if Kafka does not ack. */
     public int publishBatch() {
         Integer n = tx.execute(status -> {
+            // Released automatically at commit or rollback, so a crashed relay never holds it.
+            Boolean relay = jdbc.queryForObject("SELECT pg_try_advisory_xact_lock(?)", Boolean.class, RELAY_LOCK_KEY);
+            if (!Boolean.TRUE.equals(relay)) {
+                return 0; // another instance is relaying right now
+            }
             List<Row> rows = jdbc.query(
                     "SELECT id, aggregate_id, payload::text AS payload FROM outbox_event "
                             + "WHERE published_at IS NULL ORDER BY created_at, id LIMIT ? FOR UPDATE SKIP LOCKED",
